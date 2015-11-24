@@ -61,6 +61,9 @@ class mesh:
         if name == 'circle':
             self._boundary = lambda x, y: x**2 + y**2 - 1.0
             self.boundary_set = True
+        if name == 'square':
+            self._boundary = lambda x, y: np.maximum(np.abs(x), np.abs(y)) + 0.0*x - 1.0
+            self.boundary_set = True
         elif callable(name):
             self._boundary = name
             self.boundary_set = True
@@ -76,21 +79,23 @@ class mesh:
             mesh sizes
         """
 
+        tol = 1e-14
+
         if not self.boundary_set:
             raise Error('need to set_boundary description first')
 
-        hx = 2.0 / (nx - 1)
-        hy = 2.0 / (ny - 1)
         xmin, xmax, ymin, ymax = extent
+        hx = (xmax - xmin) / (nx - 1)
+        hy = (ymax - ymin) / (ny - 1)
 
         X, Y = np.meshgrid(np.linspace(xmin, xmax, nx),
                            np.linspace(ymin, ymax, ny))
         # keep 2D indexing
-        I2D = np.where(self._boundary(X, Y) < 0)
+        I2D = np.where(self._boundary(X, Y) < -tol)
         I = np.ravel_multi_index(I2D, (nx,ny))
 
         n = len(I)
-        indexmap = np.nan * np.ones(X.shape, dtype=int)
+        indexmap = -np.ones(X.shape, dtype=int)
         indexmap[I2D] = np.arange(n, dtype=int)
 
         IN = np.zeros((n,), dtype=bool)
@@ -111,21 +116,21 @@ class mesh:
             boundaryx = lambda xx: self._boundary(xx, y)
             boundaryy = lambda yy: self._boundary(x, yy)
 
-            if self._boundary(x, y + hy) > 0:
+            if self._boundary(x, y + hy) > -tol:
                 IN[i] = True
-                dN[i] = bisect(boundaryy, y, y + hy) - y
+                dN[i] = bisect(boundaryy, y, y + 2*hy) - y
 
-            if self._boundary(x, y - hy) > 0:
+            if self._boundary(x, y - hy) > -tol:
                 IS[i] = True
-                dS[i] = bisect(boundaryy, y, y - hy) - y
+                dS[i] = bisect(boundaryy, y, y - 2*hy) - y
 
-            if self._boundary(x + hx, y) > 0:
+            if self._boundary(x + hx, y) > -tol:
                 IE[i] = True
-                dE[i] = bisect(boundaryx, x, x + hx) - x
+                dE[i] = bisect(boundaryx, x, x + 2*hx) - x
 
-            if self._boundary(x - hx, y) > 0:
+            if self._boundary(x - hx, y) > -tol:
                 IW[i] = True
-                dW[i] = bisect(boundaryx, x, x - hx) - x
+                dW[i] = bisect(boundaryx, x, x - 2*hx) - x
 
         try:
             assert(len(np.where(IN)) == len(np.where(dN < hy)))
@@ -146,9 +151,9 @@ class mesh:
 
 if __name__ == '__main__':
 
-    nx=16
-    ny=16
-    run1 = mesh(name='circle', extent=[-1,1,-1,1], nx=nx, ny=ny)
+    nx=18
+    ny=18
+    run1 = mesh(name='circle', extent=[-2,2,-2,2], nx=nx, ny=ny)
 
     I = run1.I
     IN = run1.IN
@@ -159,8 +164,20 @@ if __name__ == '__main__':
     import disc
     A = disc.shortlyweller(run1)
 
+    u = 1 - run1.X[I]**2 - run1.Y[I]**2
+    f = 4*np.ones(run1.X[I].shape)
+
+    import scipy.sparse.linalg as spla
+    uh = spla.spsolve(A, f)
+
     import matplotlib.pyplot as plt
 
+    plt.figure()
+    uhgrid = np.zeros(run1.X.shape) * np.nan
+    uhgrid[run1.I] = uh
+    plt.pcolormesh(run1.X.reshape((nx,ny)), run1.Y.reshape((nx,ny)), uhgrid.reshape((nx,ny)))
+
+    plt.figure()
     plt.plot(run1.X, run1.Y, 'o', clip_on=False);
 
     plt.plot(run1.X[I], run1.Y[I],

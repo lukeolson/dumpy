@@ -1,7 +1,7 @@
 import numpy as np
 import scipy.sparse as sparse
 
-def shortlyweller(msh, ):
+def shortlyweller(msh):
     """
     shortlyweller discretization for nonsmooth boundary
 
@@ -18,11 +18,6 @@ def shortlyweller(msh, ):
     """
 
     n = len(msh.I)
-    #nnzmax = 5 * n
-
-    #AA = np.zeros((nnzmax,))
-    #AI = -np.ones((nnzmax,), dtype=int)
-    #AJ = -np.ones((nnzmax,), dtype=int)
 
     hN = np.abs(msh.dN)
     hS = np.abs(msh.dS)
@@ -38,30 +33,52 @@ def shortlyweller(msh, ):
     indexmap = msh.indexmap
     I2D = msh.I2D
 
-    AA = np.hstack((centerweight,
-                    northweight[np.logical_not(msh.IN)],
-                    southweight[np.logical_not(msh.IS)],
-                    eastweight[np.logical_not(msh.IE)],
-                    westweight[np.logical_not(msh.IW)]))
+    # [  N  ]
+    # [W C E]
+    # [  S  ]
 
+    # list of d.o.f.
     J = np.arange(n, dtype=int)
 
+    JnotN = J[np.logical_not(msh.IN)]
+    JnotS = J[np.logical_not(msh.IS)]
+    JnotE = J[np.logical_not(msh.IE)]
+    JnotW = J[np.logical_not(msh.IW)]
+
+    # for each d.o.f. k, add weights if they do not connect to a boundary
+    AA = np.hstack((centerweight,
+                    northweight[JnotN],
+                    southweight[JnotS],
+                    eastweight[JnotE],
+                    westweight[JnotW]))
+
+    # add the row
     AI = np.hstack((J,
-                    J[np.logical_not(msh.IN)],
-                    J[np.logical_not(msh.IS)],
-                    J[np.logical_not(msh.IE)],
-                    J[np.logical_not(msh.IW)]))
-    AJ = np.hstack((indexmap[I2D[0][J],I2D[1][J]],
-                    indexmap[I2D[0][J[np.logical_not(msh.IN)]],
-                             I2D[1][J[np.logical_not(msh.IN)]]-1],
-                    indexmap[I2D[0][J[np.logical_not(msh.IS)]],
-                             I2D[1][J[np.logical_not(msh.IS)]]+1],
-                    indexmap[I2D[0][J[np.logical_not(msh.IE)]],
-                             I2D[1][J[np.logical_not(msh.IE)]]+1],
-                    indexmap[I2D[0][J[np.logical_not(msh.IW)]],
-                             I2D[1][J[np.logical_not(msh.IW)]]-1]))
+                    JnotN,
+                    JnotS,
+                    JnotE,
+                    JnotW))
 
-    print(AJ)
+    # find the column
+    # for JnotN for example, find the global index of JnotN to the north
+    #          I2D[0][JnotN], I2D[1][JnotN]   gives the 2D indices
+    #          I2D[0][JnotN], I2D[1][JnotN]-1 gives the 2D indices to the north
+    # indexmap[(I2D[0][JnotN], I2D[1][JnotN]-1)] gives the global indices to the north
+    AJ = np.hstack((indexmap[(I2D[0][J],I2D[1][J])],
+                    indexmap[(I2D[0][JnotN]+1, I2D[1][JnotN])],
+                    indexmap[(I2D[0][JnotS]-1, I2D[1][JnotS])],
+                    indexmap[(I2D[0][JnotE], I2D[1][JnotE]+1)],
+                    indexmap[(I2D[0][JnotW], I2D[1][JnotW]-1)]))
+
+    print(msh.IN)
+    print(msh.IS)
+    print(msh.IE)
+    print(msh.IW)
+    print(indexmap[(I2D[0][J],I2D[1][J])])
+    print(indexmap[(I2D[0][JnotN]+1, I2D[1][JnotN])])
+    print(indexmap[(I2D[0][JnotS]-1, I2D[1][JnotS])])
+    print(indexmap[(I2D[0][JnotE], I2D[1][JnotE]+1)])
+    print(indexmap[(I2D[0][JnotW], I2D[1][JnotW]-1)])
+
     A = sparse.coo_matrix((AA, (AI, AJ))).tocsr()
-
-    #uh = sla.spsolve(A, b)
+    return A
